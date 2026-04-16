@@ -92,4 +92,13 @@ function generateDemo(nClean, nGaps) {
     ]
   };
 }
+window.onload = function () {
+  const n_clean = 120;
+  const n_gaps  = 30;
+
+  const data = generateDemo(n_clean, n_gaps);
+
+  renderResults(data);
+  document.getElementById('results').style.display = 'block';
+};
 </script>
