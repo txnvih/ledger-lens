@@ -1,610 +1,117 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>LedgerLens — Reconciliation Engine</title>
-<link rel="preconnect" href="https://fonts.googleapis.com"/>
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
-<style>
-  :root {
-    --bg:        #0a0b0f;
-    --surface:   #111318;
-    --border:    #1e2130;
-    --accent:    #e8ff47;
-    --red:       #ff4d6d;
-    --amber:     #ffb347;
-    --green:     #39e09b;
-    --blue:      #4d9fff;
-    --muted:     #4a5068;
-    --text:      #e4e6f0;
-    --subtext:   #7880a0;
-    --mono:      'DM Mono', monospace;
-    --sans:      'Syne', sans-serif;
-  }
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  html { scroll-behavior: smooth; }
-  body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: var(--sans);
-    min-height: 100vh;
-    overflow-x: hidden;
-  }
-
-  /* ── GRID BG ── */
-  body::before {
-    content: '';
-    position: fixed; inset: 0; z-index: 0; pointer-events: none;
-    background-image:
-      linear-gradient(rgba(232,255,71,.03) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(232,255,71,.03) 1px, transparent 1px);
-    background-size: 40px 40px;
-  }
-
-  .wrap { position: relative; z-index: 1; max-width: 1200px; margin: 0 auto; padding: 0 24px; }
-
-  /* ── HEADER ── */
-  header {
-    border-bottom: 1px solid var(--border);
-    padding: 20px 0;
-    display: flex; align-items: center; justify-content: space-between;
-  }
-  .logo { display: flex; align-items: center; gap: 10px; }
-  .logo-mark {
-    width: 36px; height: 36px; border-radius: 8px;
-    background: var(--accent);
-    display: grid; place-items: center;
-  }
-  .logo-mark svg { width: 20px; height: 20px; }
-  .logo-name { font-size: 1.15rem; font-weight: 800; letter-spacing: -.02em; }
-  .logo-tag { font-size: .7rem; font-family: var(--mono); color: var(--subtext); letter-spacing: .1em; }
-  .header-badge {
-    font-family: var(--mono); font-size: .65rem;
-    background: rgba(232,255,71,.08); border: 1px solid rgba(232,255,71,.2);
-    color: var(--accent); padding: 4px 10px; border-radius: 20px;
-    letter-spacing: .08em;
-  }
-
-  /* ── HERO ── */
-  .hero {
-    padding: 64px 0 40px;
-    display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: center;
-  }
-  .hero-title {
-    font-size: clamp(2rem, 4vw, 3.2rem); font-weight: 800;
-    line-height: 1.08; letter-spacing: -.03em;
-  }
-  .hero-title span { color: var(--accent); }
-  .hero-sub {
-    margin-top: 16px; color: var(--subtext); font-size: .92rem;
-    font-family: var(--mono); line-height: 1.7;
-  }
-  .hero-sub li { list-style: none; padding: 3px 0; }
-  .hero-sub li::before { content: '→ '; color: var(--accent); }
-  .hero-controls { display: flex; flex-direction: column; gap: 16px; }
-  .ctrl-row { display: flex; gap: 12px; }
-  .ctrl-group { flex: 1; }
-  .ctrl-group label {
-    display: block; font-family: var(--mono); font-size: .65rem;
-    color: var(--subtext); letter-spacing: .1em; margin-bottom: 6px; text-transform: uppercase;
-  }
-  .ctrl-group input[type=range] {
-    width: 100%; accent-color: var(--accent);
-  }
-  .ctrl-val {
-    font-family: var(--mono); font-size: .75rem;
-    color: var(--accent); margin-left: 6px;
-  }
-  .run-btn {
-    margin-top: 4px;
-    background: var(--accent); color: #0a0b0f;
-    border: none; border-radius: 8px; padding: 14px 28px;
-    font-family: var(--sans); font-size: .95rem; font-weight: 700;
-    cursor: pointer; letter-spacing: -.01em;
-    transition: transform .15s, box-shadow .15s;
-  }
-  .run-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(232,255,71,.25); }
-  .run-btn:active { transform: translateY(0); }
-  .run-btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
-
-  /* ── ASSUMPTIONS ── */
-  .section { padding: 32px 0; border-top: 1px solid var(--border); }
-  .section-title {
-    font-size: .65rem; font-family: var(--mono); letter-spacing: .15em;
-    color: var(--accent); text-transform: uppercase; margin-bottom: 18px;
-  }
-  .assumption-grid {
-    display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px;
-  }
-  .assumption-card {
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: 10px; padding: 14px 16px;
-    font-family: var(--mono); font-size: .75rem; line-height: 1.6; color: var(--subtext);
-  }
-  .assumption-card::before {
-    content: attr(data-n);
-    display: block; font-size: .6rem; color: var(--accent);
-    letter-spacing: .1em; margin-bottom: 4px;
-  }
-
-  /* ── SUMMARY CARDS ── */
-  #results { display: none; }
-  .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 24px; }
-  .kpi {
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: 12px; padding: 18px 20px;
-    position: relative; overflow: hidden;
-  }
-  .kpi::after {
-    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
-    background: var(--kpi-color, var(--muted));
-  }
-  .kpi-label { font-size: .6rem; font-family: var(--mono); color: var(--subtext); letter-spacing: .1em; text-transform: uppercase; }
-  .kpi-val { font-size: 1.6rem; font-weight: 800; margin-top: 6px; letter-spacing: -.03em; }
-  .kpi-val.red  { color: var(--red); }
-  .kpi-val.amber{ color: var(--amber); }
-  .kpi-val.green{ color: var(--green); }
-  .kpi-val.blue { color: var(--blue); }
-
-  /* ── CHARTS ── */
-  .charts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
-  .chart-box {
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: 12px; padding: 20px;
-  }
-  .chart-title { font-size: .65rem; font-family: var(--mono); color: var(--subtext); letter-spacing: .1em; text-transform: uppercase; margin-bottom: 16px; }
-  .bar-chart { display: flex; flex-direction: column; gap: 10px; }
-  .bar-row { display: flex; align-items: center; gap: 10px; }
-  .bar-label { width: 150px; font-family: var(--mono); font-size: .7rem; color: var(--subtext); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .bar-track { flex: 1; height: 10px; background: rgba(255,255,255,.04); border-radius: 6px; overflow: hidden; }
-  .bar-fill { height: 100%; border-radius: 6px; transition: width .6s cubic-bezier(.16,1,.3,1); }
-  .bar-count { font-family: var(--mono); font-size: .7rem; color: var(--text); min-width: 28px; text-align: right; }
-
-  /* donut */
-  .donut-wrap { display: flex; align-items: center; gap: 24px; }
-  .donut-legend { display: flex; flex-direction: column; gap: 8px; flex: 1; }
-  .legend-item { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: .7rem; }
-  .legend-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-
-  /* ── FINDINGS TABLE ── */
-  .table-wrap {
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: 12px; overflow: hidden;
-  }
-  .table-header {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 16px 20px; border-bottom: 1px solid var(--border);
-  }
-  .table-header-title { font-size: .65rem; font-family: var(--mono); color: var(--subtext); letter-spacing: .1em; text-transform: uppercase; }
-  .filter-row {
-    display: flex; gap: 8px; padding: 12px 20px; border-bottom: 1px solid var(--border);
-    flex-wrap: wrap;
-  }
-  .filter-btn {
-    font-family: var(--mono); font-size: .65rem; letter-spacing: .06em;
-    border: 1px solid var(--border); background: transparent; color: var(--subtext);
-    padding: 4px 12px; border-radius: 20px; cursor: pointer; transition: all .15s;
-  }
-  .filter-btn.active, .filter-btn:hover {
-    border-color: var(--accent); color: var(--accent); background: rgba(232,255,71,.06);
-  }
-  table { width: 100%; border-collapse: collapse; }
-  thead tr { border-bottom: 1px solid var(--border); }
-  th {
-    font-family: var(--mono); font-size: .6rem; letter-spacing: .1em;
-    color: var(--muted); text-transform: uppercase; padding: 10px 20px; text-align: left;
-  }
-  tbody tr {
-    border-bottom: 1px solid rgba(30,33,48,.6);
-    transition: background .1s;
-  }
-  tbody tr:hover { background: rgba(255,255,255,.02); }
-  td { padding: 12px 20px; font-family: var(--mono); font-size: .75rem; color: var(--subtext); }
-  td.txn { color: var(--blue); }
-  td.merchant { color: var(--text); }
-  td.amount { color: var(--text); }
-  .badge {
-    display: inline-block; font-size: .6rem; letter-spacing: .06em;
-    padding: 3px 10px; border-radius: 20px; font-weight: 500;
-    text-transform: uppercase;
-  }
-  .badge-high   { background: rgba(255,77,109,.12); color: var(--red);   border: 1px solid rgba(255,77,109,.2); }
-  .badge-medium { background: rgba(255,179,71,.12);  color: var(--amber); border: 1px solid rgba(255,179,71,.2); }
-  .badge-low    { background: rgba(77,159,255,.12);  color: var(--blue);  border: 1px solid rgba(77,159,255,.2); }
-  .issue-label  { color: var(--text); }
-
-  .pagination {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 12px 20px; border-top: 1px solid var(--border);
-    font-family: var(--mono); font-size: .7rem; color: var(--subtext);
-  }
-  .page-btns { display: flex; gap: 6px; }
-  .page-btn {
-    background: var(--border); border: none; color: var(--text);
-    width: 28px; height: 28px; border-radius: 6px; cursor: pointer;
-    font-family: var(--mono); font-size: .7rem; transition: background .1s;
-  }
-  .page-btn:hover { background: rgba(232,255,71,.15); color: var(--accent); }
-  .page-btn:disabled { opacity: .3; cursor: not-allowed; }
-
-  /* ── ELI5 BLOCK ── */
-  .eli5 {
-    margin-top: 24px; background: rgba(232,255,71,.04);
-    border: 1px solid rgba(232,255,71,.12); border-radius: 12px; padding: 20px 24px;
-  }
-  .eli5-title {
-    font-size: .6rem; font-family: var(--mono); letter-spacing: .15em;
-    color: var(--accent); text-transform: uppercase; margin-bottom: 10px;
-  }
-  .eli5-text { font-size: .85rem; line-height: 1.75; color: var(--subtext); }
-
-  /* ── LOADING ── */
-  .spinner {
-    display: none; width: 20px; height: 20px;
-    border: 2px solid rgba(232,255,71,.2); border-top-color: var(--accent);
-    border-radius: 50%; animation: spin .7s linear infinite; margin-left: 10px;
-  }
-  @keyframes spin { to { transform: rotate(360deg); } }
-
-  /* ── RESPONSIVE ── */
-  @media (max-width: 768px) {
-    .hero       { grid-template-columns: 1fr; }
-    .kpi-row    { grid-template-columns: repeat(2, 1fr); }
-    .charts-row { grid-template-columns: 1fr; }
-    .donut-wrap { flex-direction: column; }
-  }
-</style>
-</head>
-<body>
-<div class="wrap">
-
-  <!-- HEADER -->
-  <header>
-    <div class="logo">
-      <div class="logo-mark">
-        <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <rect x="2" y="4" width="16" height="2" rx="1" fill="#0a0b0f"/>
-          <rect x="2" y="9" width="10" height="2" rx="1" fill="#0a0b0f"/>
-          <rect x="2" y="14" width="13" height="2" rx="1" fill="#0a0b0f"/>
-          <circle cx="16" cy="15" r="3" fill="#0a0b0f" stroke="#0a0b0f" stroke-width="1"/>
-          <path d="M14.5 15l1 1 2-2" stroke="#e8ff47" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      </div>
-      <div>
-        <div class="logo-name">LedgerLens</div>
-        <div class="logo-tag">RECONCILIATION ENGINE</div>
-      </div>
-    </div>
-    <div class="header-badge">MONTH-END CLOSE</div>
-  </header>
-
-  <!-- HERO -->
-  <section class="hero">
-    <div>
-      <h1 class="hero-title">Books don't<br/><span>balance.</span><br/>Find out why.</h1>
-      <ul class="hero-sub">
-        <li>Platform ledger vs. bank statement</li>
-        <li>Synthetic data — no external APIs</li>
-        <li>Six anomaly classes detected</li>
-        <li>Instant gap report</li>
-      </ul>
-    </div>
-    <div class="hero-controls">
-      <div class="ctrl-row">
-        <div class="ctrl-group">
-          <label>Clean Transactions <span class="ctrl-val" id="lbl-clean">120</span></label>
-          <input type="range" id="sl-clean" min="20" max="400" value="120"
-                 oninput="document.getElementById('lbl-clean').textContent=this.value"/>
-        </div>
-        <div class="ctrl-group">
-          <label>Injected Gaps <span class="ctrl-val" id="lbl-gaps">30</span></label>
-          <input type="range" id="sl-gaps" min="5" max="80" value="30"
-                 oninput="document.getElementById('lbl-gaps').textContent=this.value"/>
-        </div>
-      </div>
-      <button class="run-btn" id="run-btn" onclick="runReconcile()">
-        Run Reconciliation <span class="spinner" id="spinner"></span>
-      </button>
-    </div>
-  </section>
-
-  <!-- ASSUMPTIONS -->
-  <section class="section">
-    <div class="section-title">// Assumptions</div>
-    <div class="assumption-grid">
-      <div class="assumption-card" data-n="01">Each transaction has a unique ID shared across platform and bank.</div>
-      <div class="assumption-card" data-n="02">Currency is recorded; FX conversion is out of scope.</div>
-      <div class="assumption-card" data-n="03">Settlement window is the same calendar month (Mar 2024).</div>
-      <div class="assumption-card" data-n="04">Amounts are compared with ±0.01 tolerance for rounding.</div>
-      <div class="assumption-card" data-n="05">A negative bank amount signals a reversal or refund.</div>
-      <div class="assumption-card" data-n="06">Data is clean enough that txn_id collision = genuine duplicate.</div>
-    </div>
-  </section>
-
-  <!-- ELI5 -->
-  <section class="section">
-    <div class="section-title">// To Explain It To A 5 y/o</div>
-    <div class="eli5">
-      <div class="eli5-text">
-        Imagine you sell lemonade and write down every cup you sell in your notebook.
-        At the end of the day your mom checks the money jar. Sometimes the jar has less
-        money than your notebook says — maybe you forgot to write one down, or someone
-        gave you the wrong coins, or you wrote the same sale twice by mistake.
-        <strong style="color:var(--accent)">LedgerLens compares your notebook with the money jar</strong>
-        and tells you exactly which pages don't match — and why.
-      </div>
-    </div>
-  </section>
-
-  <!-- RESULTS (hidden until first run) -->
-  <div id="results">
-
-    <!-- KPI ROW -->
-    <section class="section">
-      <div class="section-title">// Summary</div>
-      <div class="kpi-row">
-        <div class="kpi" style="--kpi-color:var(--blue)">
-          <div class="kpi-label">Platform Txns</div>
-          <div class="kpi-val blue" id="kpi-ptxn">—</div>
-        </div>
-        <div class="kpi" style="--kpi-color:var(--green)">
-          <div class="kpi-label">Bank Txns</div>
-          <div class="kpi-val green" id="kpi-btxn">—</div>
-        </div>
-        <div class="kpi" style="--kpi-color:var(--amber)">
-          <div class="kpi-label">Gaps Found</div>
-          <div class="kpi-val amber" id="kpi-gaps">—</div>
-        </div>
-        <div class="kpi" style="--kpi-color:var(--red)">
-          <div class="kpi-label">Net Discrepancy</div>
-          <div class="kpi-val red" id="kpi-disc">—</div>
-        </div>
-      </div>
-    </section>
-
-    <!-- CHARTS -->
-    <div class="charts-row">
-      <div class="chart-box">
-        <div class="chart-title">// Gap Breakdown by Type</div>
-        <div class="bar-chart" id="bar-chart"></div>
-      </div>
-      <div class="chart-box">
-        <div class="chart-title">// Severity Distribution</div>
-        <div class="donut-wrap">
-          <svg id="donut" width="120" height="120" viewBox="0 0 120 120"></svg>
-          <div class="donut-legend" id="donut-legend"></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- FINDINGS TABLE -->
-    <section class="section">
-      <div class="section-title">// Findings</div>
-      <div class="table-wrap">
-        <div class="table-header">
-          <span class="table-header-title">All Discrepancies</span>
-          <span style="font-family:var(--mono);font-size:.7rem;color:var(--subtext)" id="tbl-count"></span>
-        </div>
-        <div class="filter-row" id="filter-row"></div>
-        <div style="overflow-x:auto">
-          <table>
-            <thead>
-              <tr>
-                <th>TXN ID</th><th>Merchant</th><th>Date</th>
-                <th>Amount</th><th>Currency</th><th>Issue</th><th>Severity</th><th>Detail</th>
-              </tr>
-            </thead>
-            <tbody id="tbl-body"></tbody>
-          </table>
-        </div>
-        <div class="pagination">
-          <span id="page-info">— of —</span>
-          <div class="page-btns">
-            <button class="page-btn" id="btn-prev" onclick="changePage(-1)">‹</button>
-            <button class="page-btn" id="btn-next" onclick="changePage(1)">›</button>
-          </div>
-        </div>
-      </div>
-    </section>
-
-  </div><!-- /results -->
-
-</div><!-- /wrap -->
-
 <script>
 const GAP_COLORS = {
-  missing_in_bank:     '#ff4d6d',
+  missing_in_bank: '#ff4d6d',
   missing_in_platform: '#ff8547',
-  amount_mismatch:     '#ffb347',
-  date_mismatch:       '#4d9fff',
-  duplicate_platform:  '#b47fff',
-  reversed_bank:       '#39e09b',
+  amount_mismatch: '#ffb347',
+  date_mismatch: '#4d9fff',
+  duplicate_platform: '#b47fff',
+  reversed_bank: '#39e09b',
 };
-const SEVERITY_COLORS = { high: '#ff4d6d', medium: '#ffb347', low: '#4d9fff' };
 
-let allFindings = [], filtered = [], currentPage = 1, perPage = 15, activeFilter = 'all';
+let allFindings = [], filtered = [], currentPage = 1, perPage = 15;
 
+// ✅ MAIN FUNCTION (NOW SUPPORTS FILE UPLOAD)
 async function runReconcile() {
   const btn = document.getElementById('run-btn');
   const spinner = document.getElementById('spinner');
-  btn.disabled = true; spinner.style.display = 'inline-block';
 
-  const n_clean = document.getElementById('sl-clean').value;
-  const n_gaps  = document.getElementById('sl-gaps').value;
+  btn.disabled = true;
+  spinner.style.display = 'inline-block';
 
   try {
-    const res = await fetch(`/api/reconcile?n_clean=${n_clean}&n_gaps=${n_gaps}`);
-    const data = await res.json();
-    renderResults(data);
+    const fileInput = document.querySelector('input[type="file"]');
+
+    // ✅ IF FILE EXISTS → SEND TO BACKEND
+    if (fileInput && fileInput.files.length > 0) {
+      const formData = new FormData();
+      formData.append("file", fileInput.files[0]);
+
+      const res = await fetch("/api/reconcile", {
+        method: "POST",
+        body: formData
+      });
+
+      const data = await res.json();
+      renderResults(data);
+
+    } else {
+      // ✅ OTHERWISE → USE EXISTING API (SIMULATION)
+      const n_clean = document.getElementById('sl-clean').value;
+      const n_gaps  = document.getElementById('sl-gaps').value;
+
+      const res = await fetch(`/api/reconcile?n_clean=${n_clean}&n_gaps=${n_gaps}`);
+      const data = await res.json();
+      renderResults(data);
+    }
+
     document.getElementById('results').style.display = 'block';
-    document.getElementById('results').scrollIntoView({ behavior: 'smooth' });
-  } catch(e) {
-    alert('Could not reach API. Running in demo mode.');
-    renderResults(generateDemo(parseInt(n_clean), parseInt(n_gaps)));
+
+  } catch (e) {
+    alert("Error connecting to backend. Using demo mode.");
+    renderResults(generateDemo(100, 30));
     document.getElementById('results').style.display = 'block';
-  } finally {
-    btn.disabled = false; spinner.style.display = 'none';
   }
+
+  btn.disabled = false;
+  spinner.style.display = 'none';
 }
 
+// ✅ RENDER RESULTS
 function renderResults(data) {
   const s = data.summary;
-  document.getElementById('kpi-ptxn').textContent = s.platform_txn_count.toLocaleString();
-  document.getElementById('kpi-btxn').textContent = s.bank_txn_count.toLocaleString();
+
+  document.getElementById('kpi-ptxn').textContent = s.platform_txn_count;
+  document.getElementById('kpi-btxn').textContent = s.bank_txn_count;
   document.getElementById('kpi-gaps').textContent = s.total_gaps_found;
-  const disc = s.net_discrepancy;
-  document.getElementById('kpi-disc').textContent =
-    (disc >= 0 ? '+' : '') + disc.toLocaleString(undefined, {minimumFractionDigits:2});
+  document.getElementById('kpi-disc').textContent = s.net_discrepancy;
 
-  // bar chart
-  const bc = document.getElementById('bar-chart');
-  bc.innerHTML = '';
-  const maxVal = Math.max(...Object.values(s.gap_breakdown), 1);
-  Object.entries(s.gap_breakdown).forEach(([k, v]) => {
-    const pct = Math.round(v / maxVal * 100);
-    bc.innerHTML += `
-      <div class="bar-row">
-        <span class="bar-label">${k.replace(/_/g,' ')}</span>
-        <div class="bar-track">
-          <div class="bar-fill" style="width:${pct}%;background:${GAP_COLORS[k]||'#888'}"></div>
-        </div>
-        <span class="bar-count">${v}</span>
-      </div>`;
-  });
-
-  // donut
-  const sevCount = { high:0, medium:0, low:0 };
-  data.findings.forEach(f => { sevCount[f.severity] = (sevCount[f.severity]||0)+1; });
-  drawDonut(sevCount);
-
-  // table
   allFindings = data.findings;
-  activeFilter = 'all';
-  buildFilters();
-  applyFilter('all');
-}
-
-function drawDonut(counts) {
-  const total = Object.values(counts).reduce((a,b)=>a+b,0)||1;
-  const cx=60,cy=60,r=46,stroke=14;
-  let angle = -Math.PI/2;
-  let paths = '';
-  const entries = Object.entries(counts).filter(([,v])=>v>0);
-  entries.forEach(([sev,cnt]) => {
-    const sweep = (cnt/total)*Math.PI*2;
-    const x1=cx+r*Math.cos(angle), y1=cy+r*Math.sin(angle);
-    const x2=cx+r*Math.cos(angle+sweep), y2=cy+r*Math.sin(angle+sweep);
-    const large = sweep > Math.PI ? 1 : 0;
-    paths += `<path d="M ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2}"
-      fill="none" stroke="${SEVERITY_COLORS[sev]}" stroke-width="${stroke}"
-      stroke-linecap="butt"/>`;
-    angle += sweep;
-  });
-  document.getElementById('donut').innerHTML = paths +
-    `<text x="60" y="55" text-anchor="middle" font-family="'Syne',sans-serif"
-      font-size="16" font-weight="800" fill="#e4e6f0">${total}</text>
-     <text x="60" y="70" text-anchor="middle" font-family="'DM Mono',monospace"
-      font-size="8" fill="#7880a0">GAPS</text>`;
-
-  const leg = document.getElementById('donut-legend');
-  leg.innerHTML = entries.map(([sev,cnt])=>`
-    <div class="legend-item">
-      <div class="legend-dot" style="background:${SEVERITY_COLORS[sev]}"></div>
-      <span style="color:var(--subtext)">${sev} · </span>
-      <span style="color:var(--text)">${cnt}</span>
-    </div>`).join('');
-}
-
-function buildFilters() {
-  const types = ['all', ...new Set(allFindings.map(f=>f.issue))];
-  const row = document.getElementById('filter-row');
-  row.innerHTML = types.map(t=>`
-    <button class="filter-btn ${t==='all'?'active':''}"
-      onclick="applyFilter('${t}')" id="fb-${t}">
-      ${t==='all'?'All':t.replace(/_/g,' ')}
-    </button>`).join('');
-}
-
-function applyFilter(type) {
-  activeFilter = type;
-  document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
-  document.getElementById('fb-'+type)?.classList.add('active');
-  filtered = type==='all' ? allFindings : allFindings.filter(f=>f.issue===type);
-  currentPage = 1;
+  filtered = allFindings;
   renderTable();
 }
 
+// ✅ TABLE RENDER
 function renderTable() {
-  const start = (currentPage-1)*perPage;
-  const rows  = filtered.slice(start, start+perPage);
-  document.getElementById('tbl-count').textContent = `${filtered.length} records`;
-  document.getElementById('page-info').textContent =
-    `${start+1}–${Math.min(start+perPage,filtered.length)} of ${filtered.length}`;
-  document.getElementById('btn-prev').disabled = currentPage===1;
-  document.getElementById('btn-next').disabled = start+perPage>=filtered.length;
+  const tbody = document.getElementById('tbl-body');
+  tbody.innerHTML = '';
 
-  document.getElementById('tbl-body').innerHTML = rows.map(f=>`
-    <tr>
-      <td class="txn">${f.txn_id||'—'}</td>
-      <td class="merchant">${f.merchant||'—'}</td>
-      <td>${f.date||'—'}</td>
-      <td class="amount">${f.amount!=null?parseFloat(f.amount).toFixed(2):'—'}</td>
-      <td>${f.currency||'—'}</td>
-      <td class="issue-label">${(f.issue||'').replace(/_/g,' ')}</td>
-      <td><span class="badge badge-${f.severity||'low'}">${f.severity||'—'}</span></td>
-      <td>${f.detail||'—'}</td>
-    </tr>`).join('');
+  filtered.slice(0, perPage).forEach(f => {
+    tbody.innerHTML += `
+      <tr>
+        <td>${f.txn_id}</td>
+        <td>${f.merchant}</td>
+        <td>${f.date}</td>
+        <td>${f.amount}</td>
+        <td>${f.currency}</td>
+        <td>${f.issue}</td>
+        <td>${f.severity}</td>
+        <td>${f.detail}</td>
+      </tr>
+    `;
+  });
 }
 
-function changePage(d) {
-  currentPage += d;
-  renderTable();
-  document.querySelector('.table-wrap').scrollIntoView({behavior:'smooth'});
-}
-
-// ── OFFLINE DEMO FALLBACK ─────────────────────────────────────────────────
+// ✅ DEMO FALLBACK
 function generateDemo(nClean, nGaps) {
-  const issues = ['missing_in_bank','missing_in_platform','amount_mismatch',
-                  'date_mismatch','duplicate_platform','reversed_bank'];
-  const severities = {missing_in_bank:'high',missing_in_platform:'high',
-    amount_mismatch:'medium',date_mismatch:'low',duplicate_platform:'medium',reversed_bank:'high'};
-  const merchants = ['Acme Retail','ByteShop','CloudPay Ltd','DeltaMart','EasyFoods'];
-  const ccys = ['USD','EUR','GBP','INR'];
-  const findings = [];
-  const breakdown = {};
-  const sevCount = {high:0,medium:0,low:0};
-
-  for(let i=0;i<nGaps;i++){
-    const issue = issues[i%issues.length];
-    const sev   = severities[issue];
-    const amt   = (Math.random()*1000+10).toFixed(2);
-    findings.push({
-      txn_id: 'TXN'+Math.random().toString(36).slice(2,10).toUpperCase(),
-      merchant: merchants[i%merchants.length],
-      date: `2024-03-${String(Math.floor(Math.random()*28+1)).padStart(2,'0')}`,
-      amount: amt, currency: ccys[i%ccys.length],
-      issue, severity: sev,
-      detail: `Demo · ${issue.replace(/_/g,' ')}`
-    });
-    breakdown[issue] = (breakdown[issue]||0)+1;
-    sevCount[sev]++;
-  }
-  const pTotal = (nClean+nGaps)*250 + Math.random()*5000;
-  const bTotal = pTotal - (Math.random()*8000 - 1000);
   return {
     summary: {
-      platform_txn_count: nClean+nGaps,
-      bank_txn_count: nClean+Math.floor(nGaps*0.7),
-      platform_total: pTotal.toFixed(2),
-      bank_total: bTotal.toFixed(2),
-      net_discrepancy: (bTotal-pTotal).toFixed(2),
+      platform_txn_count: nClean,
+      bank_txn_count: nClean - 5,
       total_gaps_found: nGaps,
-      gap_breakdown: breakdown,
+      net_discrepancy: "-5000"
     },
-    findings
+    findings: [
+      {
+        txn_id: "TXN001",
+        merchant: "DemoStore",
+        date: "2024-03-01",
+        amount: 1000,
+        currency: "INR",
+        issue: "missing_in_bank",
+        severity: "high",
+        detail: "Demo data"
+      }
+    ]
   };
 }
 </script>
-</body>
-</html>
