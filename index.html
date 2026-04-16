@@ -12,7 +12,8 @@ let allFindings = [], filtered = [], currentPage = 1, perPage = 15;
 
 // ✅ MAIN FUNCTION (NOW SUPPORTS FILE UPLOAD)
 
-async function runReconcile() {
+
+function runReconcile() {
   const btn = document.getElementById('run-btn');
   const spinner = document.getElementById('spinner');
 
@@ -22,23 +23,7 @@ async function runReconcile() {
   const n_clean = document.getElementById('sl-clean').value;
   const n_gaps  = document.getElementById('sl-gaps').value;
 
-  let data;
-
-  try {
-    const res = await fetch(`/api/reconcile?n_clean=${n_clean}&n_gaps=${n_gaps}`);
-
-    if (!res.ok) {
-      throw new Error("API failed");
-    }
-
-    data = await res.json();
-
-  } catch (e) {
-    console.log("⚠️ API failed, using demo fallback", e);
-
-    // ✅ fallback so UI NEVER crashes
-    data = generateDemo(parseInt(n_clean), parseInt(n_gaps));
-  }
+  const data = generateDemo(parseInt(n_clean), parseInt(n_gaps));
 
   renderResults(data);
   document.getElementById('results').style.display = 'block';
@@ -46,6 +31,7 @@ async function runReconcile() {
   btn.disabled = false;
   spinner.style.display = 'none';
 }
+
 
 
 // ✅ RENDER RESULTS
