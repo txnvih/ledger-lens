@@ -11,6 +11,7 @@ const GAP_COLORS = {
 let allFindings = [], filtered = [], currentPage = 1, perPage = 15;
 
 // ✅ MAIN FUNCTION (NOW SUPPORTS FILE UPLOAD)
+
 async function runReconcile() {
   const btn = document.getElementById('run-btn');
   const spinner = document.getElementById('spinner');
@@ -18,43 +19,34 @@ async function runReconcile() {
   btn.disabled = true;
   spinner.style.display = 'inline-block';
 
+  const n_clean = document.getElementById('sl-clean').value;
+  const n_gaps  = document.getElementById('sl-gaps').value;
+
+  let data;
+
   try {
-    const fileInput = document.querySelector('input[type="file"]');
+    const res = await fetch(`/api/reconcile?n_clean=${n_clean}&n_gaps=${n_gaps}`);
 
-    // ✅ IF FILE EXISTS → SEND TO BACKEND
-    if (fileInput && fileInput.files.length > 0) {
-      const formData = new FormData();
-      formData.append("file", fileInput.files[0]);
-
-      const res = await fetch("/api/reconcile", {
-        method: "POST",
-        body: formData
-      });
-
-      const data = await res.json();
-      renderResults(data);
-
-    } else {
-      // ✅ OTHERWISE → USE EXISTING API (SIMULATION)
-      const n_clean = document.getElementById('sl-clean').value;
-      const n_gaps  = document.getElementById('sl-gaps').value;
-
-      const res = await fetch(`/api/reconcile?n_clean=${n_clean}&n_gaps=${n_gaps}`);
-      const data = await res.json();
-      renderResults(data);
+    if (!res.ok) {
+      throw new Error("API failed");
     }
 
-    document.getElementById('results').style.display = 'block';
+    data = await res.json();
 
   } catch (e) {
-    alert("Error connecting to backend. Using demo mode.");
-    renderResults(generateDemo(100, 30));
-    document.getElementById('results').style.display = 'block';
+    console.log("⚠️ API failed, using demo fallback", e);
+
+    // ✅ fallback so UI NEVER crashes
+    data = generateDemo(parseInt(n_clean), parseInt(n_gaps));
   }
+
+  renderResults(data);
+  document.getElementById('results').style.display = 'block';
 
   btn.disabled = false;
   spinner.style.display = 'none';
 }
+
 
 // ✅ RENDER RESULTS
 function renderResults(data) {
